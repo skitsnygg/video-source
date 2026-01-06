@@ -2,18 +2,24 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 import time
 from typing import Any, Dict, List, Optional
 
 from .match import find_best_match
 from .search import search_candidates
 from .transcripts import download_best_captions_vtt, parse_vtt, yt_dlp_has_subs
-from .util import append_jsonl, ensure_dirs, env_flag, extract_youtube_id, log, write_json
+from .util import append_jsonl, ensure_dirs, env_flag, extract_youtube_id, write_json
 
 
 def _print_json(obj: Dict[str, Any]) -> None:
     import json
     print(json.dumps(obj, indent=2, ensure_ascii=False))
+
+
+def _elog(msg: str) -> None:
+    """Always log to stderr so JSON output on stdout stays parseable."""
+    print(msg, file=sys.stderr)
 
 
 def _write_text(path: str, text: str) -> None:
@@ -26,16 +32,25 @@ def main() -> None:
     ap.add_argument("--snippet", required=False, help="Text snippet to locate (plain text)")
     ap.add_argument("--youtube", required=False, help="Optional: direct YouTube URL or ID (video-first)")
     ap.add_argument("--max-eval", type=int, default=int(os.getenv("MAX_EVAL", "30")))
-    ap.add_argument("--diagnose", action="store_true", help="Print short diagnostics for failures")
+    ap.add_argument("--diagnose", action="store_true", help="Print short diagnostics (to stderr)")
+    ap.add_argument(
+        "--json",
+        action="store_true",
+        help="Output final result as JSON only (stdout). All logs go to stderr.",
+    )
     args = ap.parse_args()
 
     snippet = (args.snippet or "").strip()
-    if not snippet:
-        print("Paste snippet and press Enter:")
+
+    # IMPORTANT: In --json mode, never prompt for input (UI / automation safe)
+    if not snippet and not args.json:
+        _elog("Paste snippet and press Enter:")
         snippet = input().strip()
 
     if not snippet:
-        _print_json({"ok": False, "error": "Empty snippet"})
+        res = {"ok": False, "error": "Empty snippet", "best": None, "alternatives": [], "explanation": "No snippet provided."}
+        # In json mode, stdout must be JSON only. In non-json, still fine to print JSON.
+        _print_json(res)
         return
 
     enable_web_fallback = env_flag("ENABLE_WEB_FALLBACK", True)
@@ -57,13 +72,21 @@ def main() -> None:
     out_path = os.path.join(results_dir, f"{run_id}.json")
 
     cookies_from_browser = os.getenv("YTDLP_COOKIES_FROM_BROWSER", "").strip() or None
+
     append_jsonl(
         trace_path,
-        {"event": "start", "snippet": snippet, "youtube": args.youtube, "cookies_from_browser": cookies_from_browser},
+        {
+            "event": "start",
+            "run_id": run_id,
+            "snippet": snippet,
+            "youtube": args.youtube,
+            "cookies_from_browser": cookies_from_browser,
+            "mode": "video-first" if args.youtube else "search-first",
+        },
     )
 
     if args.diagnose and not cookies_from_browser:
-        print("[diagnose] No YTDLP_COOKIES_FROM_BROWSER set. YouTube may block transcript access.")
+        _elog("[diagnose] No YTDLP_COOKIES_FROM_BROWSER set. YouTube may block transcript access.")
 
     # Candidates
     candidate_urls: List[str] = []
@@ -79,6 +102,7 @@ def main() -> None:
                 "explanation": "Provide --youtube or set ENABLE_WEB_FALLBACK=1 and SERPER_API_KEY/TAVILY_API_KEY",
             }
             write_json(out_path, res)
+            _elog(f"Wrote: {out_path}")
             _print_json(res)
             return
 
@@ -110,6 +134,7 @@ def main() -> None:
             "explanation": "Search returned no watch URLs. Provide --youtube to force a known video.",
         }
         write_json(out_path, res)
+        _elog(f"Wrote: {out_path}")
         _print_json(res)
         return
 
@@ -125,9 +150,14 @@ def main() -> None:
         list_path = os.path.join(ytdlp_out_dir, f"{run_id}__{vid}__list-subs.txt")
         _write_text(list_path, list_out)
 
+        append_jsonl(
+            trace_path,
+            {"event": "candidate", "run_id": run_id, "video_id": vid, "url": url, "has_subs": bool(has_subs), "status": status},
+        )
+
         if not has_subs:
             if args.diagnose:
-                print(f"[diagnose] {vid}: cannot list subtitles ({status}). saved: {list_path}")
+                _elog(f"[diagnose] {vid}: cannot list subtitles ({status}). saved: {list_path}")
             continue
 
         vtt_path, dl_out = download_best_captions_vtt(vid, url, captions_cache, cookies_from_browser)
@@ -136,12 +166,15 @@ def main() -> None:
 
         if not vtt_path:
             if args.diagnose:
-                print(f"[diagnose] {vid}: subtitles download failed. saved: {dl_path}")
+                _elog(f"[diagnose] {vid}: subtitles download failed. saved: {dl_path}")
+            append_jsonl(trace_path, {"event": "captions_failed", "run_id": run_id, "video_id": vid, "url": url})
             continue
 
         segs = parse_vtt(vtt_path)
         if args.diagnose:
-            print(f"[diagnose] {vid}: captions OK ({len(segs)} segments). vtt: {vtt_path}")
+            _elog(f"[diagnose] {vid}: captions OK ({len(segs)} segments). vtt: {vtt_path}")
+
+        append_jsonl(trace_path, {"event": "captions_ok", "run_id": run_id, "video_id": vid, "segments": len(segs), "vtt_path": vtt_path})
 
         if not segs:
             continue
@@ -149,7 +182,8 @@ def main() -> None:
         match = find_best_match(segs, snippet, window_words=window_words, window_stride=window_stride)
         if not match:
             if args.diagnose:
-                print(f"[diagnose] {vid}: no match in transcript.")
+                _elog(f"[diagnose] {vid}: no match in transcript.")
+            append_jsonl(trace_path, {"event": "no_match", "run_id": run_id, "video_id": vid})
             continue
 
         evidence = str(match.details.get("evidence", ""))
@@ -187,6 +221,23 @@ def main() -> None:
             "_explanation": explanation,
         }
 
+        append_jsonl(
+            trace_path,
+            {
+                "event": "match",
+                "run_id": run_id,
+                "video_id": vid,
+                "url": url,
+                "evidence": evidence,
+                "confidence": int(round(conf)),
+                "coverage": cov,
+                "timestamp_start": match.timestamp_start,
+                "timestamp_end": match.timestamp_end,
+                "accepted": bool(ok),
+                "score": float(score),
+            },
+        )
+
         scored.append(item)
 
         if score > best_score:
@@ -205,10 +256,12 @@ def main() -> None:
             "explanation": f"No evaluated candidate produced a usable timed transcript match. See logs: {trace_path}",
         }
         write_json(out_path, res)
+        _elog(f"Wrote: {out_path}")
         _print_json(res)
         return
 
     ranked = sorted(scored, key=lambda r: r["_score"], reverse=True)
+
     alternatives: List[Dict[str, Any]] = []
     for cand in ranked:
         if cand is best_item:
@@ -240,5 +293,7 @@ def main() -> None:
     }
 
     write_json(out_path, res)
-    log(f"Wrote: {out_path}")
+    _elog(f"Wrote: {out_path}")
+
+    # In --json mode, stdout must be JSON only; in non-json mode JSON is still fine.
     _print_json(res)
