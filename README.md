@@ -175,6 +175,21 @@ These directories allow runs to be inspected, replayed, and audited.
 
 The tool can be run in two primary modes: **video-first** and **search-first**.
 
+
+
+**Add this (somewhere near Usage):**
+``
+## Demo Guide
+
+### One-command demo (recommended for evaluation)
+
+Video-first runs without any paid API keys. Search-first requires `SERPER_API_KEY` or `TAVILY_API_KEY`.
+
+```bash
+export YTDLP_COOKIES_FROM_BROWSER=firefox
+./scripts/demo.sh
+```
+
 ### Video-first mode (recommended)
 
 Use this mode when you already know the video. It is deterministic and fastest.
@@ -219,6 +234,22 @@ Diagnostic output includes:
 - Whether subtitles were accessible
 - Number of caption segments parsed
 - Whether an exact phrase or fuzzy match was used
+
+
+
+
+## Observability (Logs & Traces)
+
+- `--json` prints the final structured result to **stdout** only (safe for piping/UI parsing).
+- `--diagnose` prints short run diagnostics to **stderr**.
+- Per-run artifacts:
+  - `logs/<run_id>.jsonl` (pipeline trace events)
+  - `logs/ytdlp/*` (yt-dlp outputs)
+  - `cache/captions/*` (cached VTT captions)
+  - `data/results/<run_id>.json` (final result)
+
+
+
 
 
 ## Repository Structure (Current)

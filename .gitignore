@@ -1,32 +1,13 @@
-# Python
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-
-# Virtual environments
-.venv/
-
-# Build artifacts
-build/
-dist/
-*.egg-info/
-
-# Caches and logs
-cache/
-logs/
-data/results/
-
-# OS
-.DS_Store
-
 # Runtime / demo artifacts
 out.json
 debug.log
-data/results/
-logs/
+
+# Tool outputs (keep local; generated per run)
 cache/
+logs/
+data/results/
 
 # Python
 __pycache__/
 *.pyc
+.venv/
