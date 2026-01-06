@@ -1,0 +1,9 @@
+[project]
+name = "video-source"
+version = "0.1.0"
+requires-python = ">=3.10"
+
+[project.scripts]
+video-source = "video_source.cli:main"
+[tool.setuptools.package-dir]
+"" = "src"
