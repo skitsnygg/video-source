@@ -12,9 +12,6 @@ A python script that when given a snippet of text (book, paper, article, transcr
 
 **Input:** Text snippet (plain text)
 
-**Output (minimum):**
-- A reference to a video (ID, URL, or platform identifier).
-- Start and end timestamps where the snippet appears.
 
 **Output format:**
 ```json
@@ -83,13 +80,10 @@ Create and activate a virtual environment, then install dependencies:
     pip install -U pip
     pip install -e .
 
-```
 
 
-```
 
 ## Configuration
-
 This project is configurable via environment variables. All configuration is optional, but some settings improve reliability and reproducibility.
 
 ### YouTube access (recommended)
@@ -103,6 +97,7 @@ This project is configurable via environment variables. All configuration is opt
 
   This is strongly recommended, as many videos block subtitle access without cookies.
 
+``
 ### Search providers (optional)
 
 Used only in **search-first** mode (when no `--youtube` argument is provided).
