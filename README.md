@@ -128,7 +128,6 @@ This project is configurable via environment variables. All configuration is opt
 
   This is strongly recommended, as many videos block subtitle access without cookies.
 
-``
 ### Search providers (optional)
 
 Used only in **search-first** mode (when no `--youtube` argument is provided).
