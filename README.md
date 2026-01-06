@@ -2,6 +2,37 @@
 
 A python script that when given a snippet of text (book, paper, article, transcript) will find the original video and the relevant time range.
 
+## Overview
+
+Given a short snippet of text (from a book, paper, article, or transcript), this tool finds the most likely YouTube video where the line was spoken and returns tight start/end timestamps with evidence.
+
+Supports two modes:
+- **Video-first**: you provide a YouTube URL/ID (deterministic).
+- **Search-first**: you provide only text; the tool searches candidates, ranks them, and returns the best match.
+
+## Architecture
+
+```text
+snippet (+ optional youtube)
+        |
+        v
+CLI (video-source)
+  | search-first -> search providers -> candidate video_ids
+  | video-first  -> single video_id
+        |
+        v
+transcript fetcher (YT API -> yt-dlp fallback) + caching
+        |
+        v
+matcher (exact -> n-gram anchors -> fuzzy window) -> timestamps
+        |
+        v
+result JSON + evidence + alternatives
+        |
+        v
+logs/traces (jsonl) + saved artifacts (vtt, ytdlp logs)
+
+```
 ## Features
 
 - Works even with noisy or approximate text.

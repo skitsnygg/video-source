@@ -19,3 +19,14 @@ data/results/
 
 # OS
 .DS_Store
+
+# Runtime / demo artifacts
+out.json
+debug.log
+data/results/
+logs/
+cache/
+
+# Python
+__pycache__/
+*.pyc
