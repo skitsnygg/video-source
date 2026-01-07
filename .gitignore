@@ -11,3 +11,15 @@ data/results/
 __pycache__/
 *.pyc
 .venv/
+
+# macOS
+.DS_Store
+
+# Python build artifacts
+*.egg-info/
+
+# Runtime artifacts
+subs.en.vtt
+cache/
+logs/
+data/results/
