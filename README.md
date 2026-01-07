@@ -174,10 +174,6 @@ These directories allow runs to be inspected, replayed, and audited.
 
 The tool can be run in two primary modes: **video-first** and **search-first**.
 
-
-
-**Add this (somewhere near Usage):**
-``
 ## Demo Guide
 
 ### One-command demo (recommended for evaluation)
@@ -247,9 +243,261 @@ Diagnostic output includes:
   - `cache/captions/*` (cached VTT captions)
   - `data/results/<run_id>.json` (final result)
 
+## Docker (Optional – Reproducible Setup)
+
+This project includes optional **Docker** and **docker-compose** support for reproducible execution without requiring a local Python environment.
+
+> **Important note on YouTube cookies**  
+> Browser-based cookies (`YTDLP_COOKIES_FROM_BROWSER`) generally do **not** work inside Docker containers.  
+> For reliable transcript access when running in Docker, it is recommended to export browser cookies to a `cookies.txt` file and mount it into the container.
+
+---
+
+### Build the Docker image
+
+From the repository root:
+
+```bash
+docker compose build
+```
+## Run (Video-first mode – recommended)
+
+### Prerequisites
+
+```bash
+export YTDLP_COOKIES_FROM_BROWSER=firefox
+```
+### Command
+```
+video-source --json --diagnose \
+  --youtube "https://www.youtube.com/watch?v=qp0HIF3SfI4" \
+  --snippet "People don't buy what you do, they buy why you do it."
+```
+### Optional: Save stdout/stderr separately
+```
+video-source --json --diagnose \
+  --youtube "https://www.youtube.com/watch?v=qp0HIF3SfI4" \
+  --snippet "People don't buy what you do, they buy why you do it." \
+  1>out.json 2>debug.log
+```
+## Run (Search-first mode)
+
+### Goal
+
+Automatically search for candidate videos using the provided text snippet, evaluate transcripts, and return the best matching video with timestamps.
+
+### Prerequisites
+
+At least one search provider API key must be set:
+
+```bash
+export SERPER_API_KEY=YOUR_KEY_HERE
+# or
+export TAVILY_API_KEY=YOUR_KEY_HERE
+```
+
+Browser cookies are still strongly recommended for reliable transcript access:
+```bash
+export YTDLP_COOKIES_FROM_BROWSER=firefox
+```
+
+### Command
+```bash
+video-source --json --diagnose \
+  --snippet "People don't buy what you do, they buy why you do it."
+```
+### Optional: Save stdout/stderr separately
+```bash
+video-source --json --diagnose \
+  --snippet "People don't buy what you do, they buy why you do it." \
+  1>out.json 2>debug.log
+```
+
+## Run via Docker (Video-first mode)
+
+### Goal
+
+Run the tool in **video-first mode** using Docker for reproducible execution, without requiring a local Python environment.
+
+### Prerequisites
+
+- Docker and Docker Compose installed
+- You are in the repository root
+
+> **Note on cookies:**  
+> `YTDLP_COOKIES_FROM_BROWSER` generally does **not** work inside Docker containers.  
+> For best results, use a `cookies.txt` file mounted into the container.
+
+### Optional: Provide cookies to Docker (recommended)
+
+1. Export browser cookies to a Netscape-format file named:
+   ```text
+   cookies.txt
+Place the file in the repository root.
+
+The file will be mounted automatically at /app/cookies.txt
+
+### Command
+```bash
+docker compose run --rm video-source \
+  video-source --json --diagnose \
+  --youtube "https://www.youtube.com/watch?v=qp0HIF3SfI4" \
+  --snippet "People don't buy what you do, they buy why you do it."
+```
+## Run via Docker (Search-first mode)
+
+### Goal
+
+Run the tool in **search-first mode** inside Docker, allowing the system to autonomously discover candidate videos from the provided text snippet.
+
+### Prerequisites
+
+- Docker and Docker Compose installed
+- You are in the repository root
+- At least one search provider API key set:
+
+```bash
+export SERPER_API_KEY=YOUR_KEY_HERE
+# or
+export TAVILY_API_KEY=YOUR_KEY_HERE
+```
+### Command
+```bash
+SERPER_API_KEY=YOUR_KEY_HERE docker compose run --rm video-source \
+  video-source --json --diagnose \
+  --snippet "People don't buy what you do, they buy why you do it."
+```
+## Observability & Debugging
+
+### Overview
+
+The system is designed to be fully observable. Each run produces structured outputs, human-readable diagnostics, and persistent artifacts that allow the full decision process to be inspected and audited.
+
+### JSON Output Mode
+
+When the `--json` flag is enabled:
+
+- **stdout** contains exactly **one JSON object**
+- **stderr** is reserved for diagnostics and logs
+
+This guarantees that the tool is safe for:
+- piping
+- automation
+- UI integration (e.g., Streamlit)
+
+Example:
+
+```bash
+video-source --json --diagnose \
+  --youtube "https://www.youtube.com/watch?v=qp0HIF3SfI4" \
+  --snippet "People don't buy what you do, they buy why you do it."
+```
+#### The --diagnose flag enables short, human-readable diagnostics written to stderr, including:
+
+subtitle availability checks\
+
+caption segment counts
+
+transcript download status
+
+match acceptance / rejection reasoning
+
+Diagnostics never pollute JSON output.
+
+Persisted Artifacts
+
+#### Each run generates the following artifacts on disk:
+
+cache/captions/
+Cached VTT subtitle files (avoids repeated downloads)
+
+logs/<run_id>.jsonl
+Structured per-step trace events (search, captions, matching)
+
+logs/ytdlp/
+Raw yt-dlp command outputs for subtitle listing and download
+
+data/results/<run_id>.json
+Final structured result saved to disk
+
+#### These artifacts allow runs to be replayed, inspected, and audited end-to-end.
 
 
+### Separating stdout and stderr (example)
+```bash
+video-source --json --diagnose \
+  --snippet "People don't buy what you do, they buy why you do it." \
+  1>result.json 2>debug.log
+```
+result.json → clean machine-readable output
 
+debug.log → full diagnostic trace
+
+## Architecture Summary
+
+### High-level Flow
+
+The system follows a simple, auditable pipeline from input text to timestamped video attribution:
+
+```text
+Text snippet
+   |
+   v
+Candidate selection
+  - Video-first: explicit YouTube URL or ID
+  - Search-first: search providers (Serper / Tavily)
+   |
+   v
+Transcript retrieval
+  - yt-dlp subtitle discovery
+  - caption download + caching
+   |
+   v
+Matching engine
+  - exact phrase match (highest confidence)
+  - anchored n-gram matching
+  - fuzzy sliding-window fallback
+   |
+   v
+Scoring & ranking
+  - confidence + coverage thresholds
+  - deterministic acceptance rules
+   |
+   v
+Structured result
+  - best match
+  - ranked alternatives
+  - evidence + explanation
+```
+
+### Module Responsibilities
+
+CLI (cli.py)
+Orchestrates execution, handles modes, flags, logging, and output formatting.
+
+Search (search.py)
+Retrieves candidate video URLs in search-first mode using pluggable providers.
+
+Transcripts (transcripts.py)
+Handles subtitle discovery, download, parsing, and caching via yt-dlp.
+
+Matching (match.py)
+Performs exact, anchored, and fuzzy matching to locate tight timestamps.
+
+Utilities (util.py)
+Shared helpers for logging, paths, environment configuration, and persistence.
+
+### Design Principles
+
+Deterministic behavior when inputs are known
+
+Conservative acceptance thresholds to avoid false positives
+
+Clear separation of concerns between stages
+
+Traceability at every step (logs, traces, artifacts)
+
+Safe defaults for automation and UI integration
 
 ## Repository Structure (Current)
 
