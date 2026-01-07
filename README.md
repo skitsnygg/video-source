@@ -106,13 +106,20 @@ To install yt-dlp if needed:
 
 Create and activate a virtual environment, then install dependencies:
 
+**MacOS / Linux**
+
     python3 -m venv .venv
     source .venv/bin/activate
     pip install -U pip
     pip install -e .
 
+**Windows (Powershell)**
 
-
+```bash
+cd path\to\repo
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+```
 
 ## Configuration
 This project is configurable via environment variables. All configuration is optional, but some settings improve reliability and reproducibility.
