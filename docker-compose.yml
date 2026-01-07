@@ -1,0 +1,30 @@
+services:
+  video-source:
+    build: .
+    image: video-source:latest
+    working_dir: /app
+    environment:
+      # Reproducible output locations inside container
+      CW_CACHE_DIR: /app/cache
+      CW_LOG_DIR: /app/logs
+      CW_RESULTS_DIR: /app/data/results
+
+      # Optional search provider keys (set in your shell or .env)
+      SERPER_API_KEY: ${SERPER_API_KEY:-}
+      TAVILY_API_KEY: ${TAVILY_API_KEY:-}
+
+      # Optional tuning
+      MIN_CONFIDENCE: ${MIN_CONFIDENCE:-70}
+      MIN_COVERAGE: ${MIN_COVERAGE:-0.55}
+      WINDOW_WORDS: ${WINDOW_WORDS:-80}
+      WINDOW_STRIDE: ${WINDOW_STRIDE:-12}
+
+      # IMPORTANT:
+      # YTDLP_COOKIES_FROM_BROWSER generally won't work inside Docker.
+      # Prefer mounting a cookies file and passing it via a dedicated env var/flag in your code (see below).
+    volumes:
+      - ./cache:/app/cache
+      - ./logs:/app/logs
+      - ./data/results:/app/data/results
+      # Optional: mount a cookies file exported from your host browser (recommended)
+      - ./cookies.txt:/app/cookies.txt:ro
