@@ -499,26 +499,49 @@ Traceability at every step (logs, traces, artifacts)
 
 Safe defaults for automation and UI integration
 
-## Repository Structure (Current)
+## Repository Structure
 
-The repository is organized as follows:
+The repository is organized to clearly separate core logic, scripts, and generated artifacts.
 
-    video_source/
-      README.md
-      pyproject.toml
-      src/video_source/
-        cli.py            # Command-line interface
-        match.py          # Phrase anchoring and fuzzy matching logic
-        search.py         # Candidate retrieval (search-first)
-        transcripts.py   # Caption download and parsing (yt-dlp)
-        types.py         # Shared data structures
-        util.py          # Utilities (logging, paths, helpers)
-      cache/
-        captions/         # Cached VTT subtitle files
-      logs/
-        ytdlp/            # yt-dlp command outputs per run
-      data/
-        results/          # Final structured JSON outputs
+```text
+video-source/
+├── README.md                 # Project overview and usage instructions
+├── pyproject.toml            # Package metadata and dependencies
+├── Dockerfile                # Optional Docker image for reproducibility
+├── docker-compose.yml        # Optional docker-compose setup
+├── .gitignore                # Ignore runtime and build artifacts
+│
+├── src/
+│   └── video_source/
+│       ├── cli.py            # Command-line interface
+│       ├── search.py         # Candidate video search (search-first mode)
+│       ├── transcripts.py    # Subtitle discovery, download, and parsing
+│       ├── match.py          # Phrase anchoring and fuzzy matching logic
+│       ├── types.py          # Shared data structures
+│       └── util.py           # Utilities (logging, paths, helpers)
+│
+├── scripts/
+│   └── demo.sh               # One-command demo for evaluation
+│
+├── cache/                    # Cached artifacts (ignored by git)
+│   └── captions/             # Downloaded VTT subtitle files
+│
+├── logs/                     # Execution logs (ignored by git)
+│   └── ytdlp/                # yt-dlp command outputs
+│
+└── data/
+    └── results/              # Final structured JSON results (ignored by git)
+```
+
+### Notes
+
+Core application code lives under src/video_source/.
+
+Runtime artifacts (cache/, logs/, data/results/) are generated per run and excluded from version control.
+
+The scripts/demo.sh script provides a single-command entry point for evaluators.
+
+Docker support is optional and intended for reproducible execution.
 
 This layout separates core logic from cached artifacts and ensures runs are reproducible end-to-end.
 
