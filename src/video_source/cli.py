@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 from .match import find_best_match
 from .search import search_candidates
 from .transcripts import download_best_captions_vtt, parse_vtt, yt_dlp_has_subs
-from .util import append_jsonl, ensure_dirs, env_flag, extract_youtube_id, write_json
+from .util import append_jsonl, ensure_dirs, env_flag, extract_youtube_id, write_json, which
 
 
 def _print_json(obj: Dict[str, Any]) -> None:
@@ -27,11 +27,37 @@ def _write_text(path: str, text: str) -> None:
         f.write(text or "")
 
 
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    raw = raw.strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    raw = raw.strip()
+    if not raw:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(prog="video-source")
     ap.add_argument("--snippet", required=False, help="Text snippet to locate (plain text)")
     ap.add_argument("--youtube", required=False, help="Optional: direct YouTube URL or ID (video-first)")
-    ap.add_argument("--max-eval", type=int, default=int(os.getenv("MAX_EVAL", "30")))
+    ap.add_argument("--max-eval", type=int, default=_env_int("MAX_EVAL", 30))
     ap.add_argument("--diagnose", action="store_true", help="Print short diagnostics (to stderr)")
     ap.add_argument(
         "--json",
@@ -54,10 +80,14 @@ def main() -> None:
         return
 
     enable_web_fallback = env_flag("ENABLE_WEB_FALLBACK", True)
-    min_conf = float(os.getenv("MIN_CONFIDENCE", "70"))
-    min_cov = float(os.getenv("MIN_COVERAGE", "0.55"))
-    window_words = int(os.getenv("WINDOW_WORDS", "80"))
-    window_stride = int(os.getenv("WINDOW_STRIDE", "12"))
+    min_conf = _env_float("MIN_CONFIDENCE", 70.0)
+    min_cov = _env_float("MIN_COVERAGE", 0.55)
+    window_words = _env_int("WINDOW_WORDS", 80)
+    window_stride = _env_int("WINDOW_STRIDE", 12)
+    if window_words < 1:
+        window_words = 80
+    if window_stride < 1:
+        window_stride = 12
 
     cache_dir = os.getenv("CW_CACHE_DIR", "./cache")
     log_dir = os.getenv("CW_LOG_DIR", "./logs")
@@ -67,11 +97,36 @@ def main() -> None:
 
     ensure_dirs(captions_cache, log_dir, results_dir, ytdlp_out_dir)
 
-    run_id = f"run_{int(time.time())}"
+    if args.max_eval < 1:
+        res = {"ok": False, "error": "MAX_EVAL must be >= 1", "best": None, "alternatives": [], "explanation": "Invalid MAX_EVAL or --max-eval."}
+        _print_json(res)
+        return
+
+    run_id = f"run_{time.time_ns()}"
     trace_path = os.path.join(log_dir, f"{run_id}.jsonl")
     out_path = os.path.join(results_dir, f"{run_id}.json")
 
     cookies_from_browser = os.getenv("YTDLP_COOKIES_FROM_BROWSER", "").strip() or None
+    cookies_file = os.getenv("YTDLP_COOKIES_FILE", "").strip() or None
+    if cookies_file and not os.path.isfile(cookies_file):
+        if args.diagnose:
+            _elog(f"[diagnose] YTDLP_COOKIES_FILE not found: {cookies_file}. Ignoring.")
+        cookies_file = None
+
+    try:
+        ytdlp_path = which("yt-dlp")
+    except RuntimeError as exc:
+        res = {
+            "ok": False,
+            "error": str(exc),
+            "best": None,
+            "alternatives": [],
+            "explanation": "yt-dlp is required but was not found on PATH.",
+        }
+        write_json(out_path, res)
+        _elog(f"Wrote: {out_path}")
+        _print_json(res)
+        return
 
     append_jsonl(
         trace_path,
@@ -81,12 +136,13 @@ def main() -> None:
             "snippet": snippet,
             "youtube": args.youtube,
             "cookies_from_browser": cookies_from_browser,
+            "cookies_file": cookies_file,
             "mode": "video-first" if args.youtube else "search-first",
         },
     )
 
-    if args.diagnose and not cookies_from_browser:
-        _elog("[diagnose] No YTDLP_COOKIES_FROM_BROWSER set. YouTube may block transcript access.")
+    if args.diagnose and not cookies_from_browser and not cookies_file:
+        _elog("[diagnose] No cookies configured (YTDLP_COOKIES_FROM_BROWSER or YTDLP_COOKIES_FILE). YouTube may block transcript access.")
 
     # Candidates
     candidate_urls: List[str] = []
@@ -100,6 +156,21 @@ def main() -> None:
                 "best": None,
                 "alternatives": [],
                 "explanation": "Provide --youtube or set ENABLE_WEB_FALLBACK=1 and SERPER_API_KEY/TAVILY_API_KEY",
+            }
+            write_json(out_path, res)
+            _elog(f"Wrote: {out_path}")
+            _print_json(res)
+            return
+
+        serper_key = os.getenv("SERPER_API_KEY", "").strip()
+        tavily_key = os.getenv("TAVILY_API_KEY", "").strip()
+        if not serper_key and not tavily_key:
+            res = {
+                "ok": False,
+                "error": "Search-first mode requires SERPER_API_KEY or TAVILY_API_KEY",
+                "best": None,
+                "alternatives": [],
+                "explanation": "Provide --youtube or set SERPER_API_KEY/TAVILY_API_KEY to enable search-first.",
             }
             write_json(out_path, res)
             _elog(f"Wrote: {out_path}")
@@ -146,7 +217,12 @@ def main() -> None:
     for url in candidate_urls[: args.max_eval]:
         vid = extract_youtube_id(url) or "unknown"
 
-        has_subs, list_out, status = yt_dlp_has_subs(url, cookies_from_browser)
+        has_subs, list_out, status = yt_dlp_has_subs(
+            url,
+            cookies_from_browser,
+            cookies_file=cookies_file,
+            ytdlp_path=ytdlp_path,
+        )
         list_path = os.path.join(ytdlp_out_dir, f"{run_id}__{vid}__list-subs.txt")
         _write_text(list_path, list_out)
 
@@ -155,12 +231,35 @@ def main() -> None:
             {"event": "candidate", "run_id": run_id, "video_id": vid, "url": url, "has_subs": bool(has_subs), "status": status},
         )
 
-        if not has_subs:
+        if status == "missing_ytdlp":
+            res = {
+                "ok": False,
+                "error": "yt-dlp not found on PATH",
+                "best": None,
+                "alternatives": [],
+                "explanation": "Install yt-dlp and ensure it is on PATH.",
+            }
+            write_json(out_path, res)
+            _elog(f"Wrote: {out_path}")
+            _print_json(res)
+            return
+
+        if status == "bot_gate":
             if args.diagnose:
                 _elog(f"[diagnose] {vid}: cannot list subtitles ({status}). saved: {list_path}")
             continue
 
-        vtt_path, dl_out = download_best_captions_vtt(vid, url, captions_cache, cookies_from_browser)
+        if not has_subs and args.diagnose:
+            _elog(f"[diagnose] {vid}: subtitles not listed ({status}). attempting download anyway.")
+
+        vtt_path, dl_out = download_best_captions_vtt(
+            vid,
+            url,
+            captions_cache,
+            cookies_from_browser,
+            cookies_file=cookies_file,
+            ytdlp_path=ytdlp_path,
+        )
         dl_path = os.path.join(ytdlp_out_dir, f"{run_id}__{vid}__download-subs.txt")
         _write_text(dl_path, dl_out)
 

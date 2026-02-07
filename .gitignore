@@ -1,6 +1,8 @@
 # Runtime / demo artifacts
 out.json
 debug.log
+logs.zip
+subs.en.vtt
 
 # Tool outputs (keep local; generated per run)
 cache/
@@ -17,9 +19,3 @@ __pycache__/
 
 # Python build artifacts
 *.egg-info/
-
-# Runtime artifacts
-subs.en.vtt
-cache/
-logs/
-data/results/

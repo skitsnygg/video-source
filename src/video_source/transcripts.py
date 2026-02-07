@@ -13,7 +13,20 @@ BOT_GATE_HINT = "sign in to confirm you’re not a bot"
 BOT_GATE_HINT_ASCII = "sign in to confirm you're not a bot"
 
 
-def yt_dlp_has_subs(video_url: str, cookies_from_browser: Optional[str]) -> Tuple[bool, str, str]:
+def _cookie_args(cookies_from_browser: Optional[str], cookies_file: Optional[str]) -> List[str]:
+    if cookies_file:
+        return ["--cookies", cookies_file]
+    if cookies_from_browser:
+        return ["--cookies-from-browser", cookies_from_browser]
+    return []
+
+
+def yt_dlp_has_subs(
+    video_url: str,
+    cookies_from_browser: Optional[str],
+    cookies_file: Optional[str] = None,
+    ytdlp_path: Optional[str] = None,
+) -> Tuple[bool, str, str]:
     """
     Returns:
       (has_any_subs, output_text, status)
@@ -23,11 +36,15 @@ def yt_dlp_has_subs(video_url: str, cookies_from_browser: Optional[str]) -> Tupl
       - "bot_gate"
       - "no_subs"
       - "error"
+      - "missing_ytdlp"
     """
-    ytdlp = which("yt-dlp")
+    try:
+        ytdlp = ytdlp_path or which("yt-dlp")
+    except RuntimeError as exc:
+        return False, str(exc), "missing_ytdlp"
+
     cmd = [ytdlp]
-    if cookies_from_browser:
-        cmd += ["--cookies-from-browser", cookies_from_browser]
+    cmd += _cookie_args(cookies_from_browser, cookies_file)
     cmd += ["--skip-download", "--list-subs", video_url]
     rc, out = safe_run(cmd, timeout=120)
 
@@ -36,7 +53,9 @@ def yt_dlp_has_subs(video_url: str, cookies_from_browser: Optional[str]) -> Tupl
         return False, out, "bot_gate"
     if rc != 0:
         return False, out, "error"
-    if "has no subtitles" in txt:
+    if "available subtitles" in txt or "available automatic captions" in txt:
+        return True, out, "ok"
+    if "has no subtitles" in txt or "no subtitles" in txt:
         return False, out, "no_subs"
     return True, out, "ok"
 
@@ -72,6 +91,8 @@ def download_best_captions_vtt(
     video_url: str,
     cache_dir: str,
     cookies_from_browser: Optional[str],
+    cookies_file: Optional[str] = None,
+    ytdlp_path: Optional[str] = None,
 ) -> Tuple[Optional[str], str]:
     """
     Tries:
@@ -85,14 +106,16 @@ def download_best_captions_vtt(
     if os.path.exists(cache_path) and os.path.getsize(cache_path) > 200:
         return cache_path, "cache_hit"
 
-    ytdlp = which("yt-dlp")
+    try:
+        ytdlp = ytdlp_path or which("yt-dlp")
+    except RuntimeError as exc:
+        return None, str(exc)
 
     def run_variant(write_flag: str) -> Tuple[Optional[str], str]:
         with tempfile.TemporaryDirectory(prefix="cw_caps_") as td:
             outtmpl = os.path.join(td, "__sub.%(ext)s")
             cmd = [ytdlp]
-            if cookies_from_browser:
-                cmd += ["--cookies-from-browser", cookies_from_browser]
+            cmd += _cookie_args(cookies_from_browser, cookies_file)
             cmd += [
                 "--skip-download",
                 write_flag,

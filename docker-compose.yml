@@ -21,7 +21,8 @@ services:
 
       # IMPORTANT:
       # YTDLP_COOKIES_FROM_BROWSER generally won't work inside Docker.
-      # Prefer mounting a cookies file and passing it via a dedicated env var/flag in your code (see below).
+      # Prefer mounting a cookies file and passing it via YTDLP_COOKIES_FILE (see below).
+      YTDLP_COOKIES_FILE: ${YTDLP_COOKIES_FILE:-/app/cookies.txt}
     volumes:
       - ./cache:/app/cache
       - ./logs:/app/logs

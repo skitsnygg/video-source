@@ -135,6 +135,13 @@ This project is configurable via environment variables. All configuration is opt
 
   This is strongly recommended, as many videos block subtitle access without cookies.
 
+- `YTDLP_COOKIES_FILE`  
+  Path to a Netscape-format cookies file to pass to `yt-dlp` (recommended for Docker).
+
+  Example:
+
+      export YTDLP_COOKIES_FILE=/path/to/cookies.txt
+
 ### Search providers (optional)
 
 Used only in **search-first** mode (when no `--youtube` argument is provided).
@@ -256,7 +263,7 @@ This project includes optional **Docker** and **docker-compose** support for rep
 
 > **Important note on YouTube cookies**  
 > Browser-based cookies (`YTDLP_COOKIES_FROM_BROWSER`) generally do **not** work inside Docker containers.  
-> For reliable transcript access when running in Docker, it is recommended to export browser cookies to a `cookies.txt` file and mount it into the container.
+> For reliable transcript access when running in Docker, export browser cookies to a `cookies.txt` file, mount it into the container, and set `YTDLP_COOKIES_FILE`.
 
 ---
 
@@ -333,16 +340,23 @@ Run the tool in **video-first mode** using Docker for reproducible execution, wi
 
 > **Note on cookies:**  
 > `YTDLP_COOKIES_FROM_BROWSER` generally does **not** work inside Docker containers.  
-> For best results, use a `cookies.txt` file mounted into the container.
+> For best results, use a `cookies.txt` file mounted into the container and set `YTDLP_COOKIES_FILE`.
 
 ### Optional: Provide cookies to Docker (recommended)
 
 1. Export browser cookies to a Netscape-format file named:
    ```text
    cookies.txt
-Place the file in the repository root.
+   ```
+   Place the file in the repository root.
 
 The file will be mounted automatically at /app/cookies.txt
+
+Set the env var inside Docker to use it:
+
+```bash
+export YTDLP_COOKIES_FILE=/app/cookies.txt
+```
 
 ### Command
 ```bash
@@ -551,4 +565,3 @@ The scripts/demo.sh script provides a single-command entry point for evaluators.
 Docker support is optional and intended for reproducible execution.
 
 This layout separates core logic from cached artifacts and ensures runs are reproducible end-to-end.
-
